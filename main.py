@@ -1,14 +1,11 @@
 import streamlit as st
 
 from sidebar import render_sidebar
-from pages.asset_dashboard import render_asset_dashboard
-from pages.correlation_analysis import render_correlation_analysis
-from pages.sentiment_news import render_sentiment_news
+from sides.asset_dashboard import render_asset_dashboard
+from sides.correlation_analysis import render_correlation_analysis
+from sides.sentiment_news import render_sentiment_news
 
-st.set_page_config(
-    page_title="자산 데이터 분석 대시보드",
-    layout="wide"
-)
+st.set_page_config(page_title="자산 데이터 분석 대시보드", layout="wide")
 
 menu = render_sidebar()
 
