@@ -1,112 +1,99 @@
 import streamlit as st
+import yfinance as yf
+import requests as req
+import pandas as pd
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from collections import Counter
+import re
+import numpy as np
+from PIL import Image
+import json
+
+# 1. 네이버 API 설정
+NAVER_CLIENT_ID = "5oVXMqrseId0LObau9b9"
+NAVER_CLIENT_SECRET = "JTk7ZQRTpj"
+
+
+@st.cache_data(ttl=3600)
+def get_vix_data():
+    """공포지수(VIX) 데이터 가져오기"""
+    vix = yf.download("^VIX", period="2d")
+    if not vix.empty and len(vix) >= 2:
+        current_vix = vix["Close"].iloc[-1]
+        prev_vix = vix["Close"].iloc[-2]
+        delta = current_vix - prev_vix
+        return float(current_vix), float(delta)
+    return None, None
+
+
+def clean_html(text):
+    """네이버 뉴스 결과에서 HTML 태그 및 특수문자 제거"""
+    clean = re.sub("<.*?>", "", text)  # 태그 제거
+    clean = re.sub("&#39;", "'", clean)
+    clean = re.sub("&quot;", '"', clean)
+    clean = re.sub("&amp;", "&", clean)
+    return clean
+
+
+@st.cache_data(ttl=3600)
+def get_naver_news(keyword="증권", display=30):
+    """네이버 뉴스 검색 API 호출"""
+    url = f"https://openapi.naver.com/v1/search/news.json?query={keyword}&display={display}&sort=sim"
+    N_A = {
+        "X-Naver-Client-Id": NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+    }
+    res = req.get(url, headers=N_A)
+    my_json = json.loads(res.text)  # json 형식으로 파싱
+    return my_json["items"]
 
 
 def render_sentiment_news():
-    NAVER_CLIENT_ID = "5oVXMqrseId0LObau9b9"
-    NAVER_CLIENT_SECRET = "JTk7ZQRTpj"
-
-    @st.cache_data(ttl=3600)
-    def get_vix_data():
-        """공포지수(VIX) 데이터 가져오기"""
-        vix = yf.download("^VIX", period="2d")
-        if not vix.empty and len(vix) >= 2:
-            current_vix = vix["Close"].iloc[-1]
-            prev_vix = vix["Close"].iloc[-2]
-            delta = current_vix - prev_vix
-            return float(current_vix), float(delta)
-        return None, None
-
-    def clean_html(text):
-        """네이버 뉴스 결과에서 HTML 태그 및 특수문자 제거"""
-        clean = re.sub("<.*?>", "", text)  # 태그 제거
-        clean = re.sub("&#39;", "'", clean)
-        clean = re.sub("&quot;", '"', clean)
-        clean = re.sub("&amp;", "&", clean)
-        return clean
-
-    @st.cache_data(ttl=3600)
-    def get_naver_news(query="거시경제", display=30):
-        """네이버 뉴스 검색 API 호출"""
-        url = f"https://openapi.naver.com/v1/search/news.json?query={query}&display={display}&sort=sim"
-        N_A = {
-            "X-Naver-Client-Id": NAVER_CLIENT_ID,
-            "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
-        }
-        res = req.get(url, headers=N_A)
-
-        if res.status_code == 200:
-            items = res.json().get("items", [])
-            for item in items:
-                item["title"] = clean_html(item["title"])
-                item["description"] = clean_html(item["description"])
-            return items
-        else:
-            st.error(f"네이버 API 호출 실패: {res.status_code}")
-            return []
-
-    def create_wordcloud(news_items):
+    def wcChart(new_items):
         """뉴스 헤드라인 기반 워드클라우드 생성"""
-        okt = Okt()
-        all_titles = " ".join([item["title"] for item in news_items])
+        try:
+            # 1. 배경 이미지 불러오기 및 넘파이 배열 변환
+            img = Image.open("data/background_2.png")
+            my_mask = np.array(img)
 
-        # 명사 추출 및 불용어 제거
-        nouns = okt.nouns(all_titles)
-        stopwords = [
-            "뉴스",
-            "경제",
-            "시장",
-            "오늘",
-            "날",
-            "포토",
-            "기자",
-            "증시",
-            "분석",
-        ]
-        words = [n for n in nouns if len(n) > 1 and n not in stopwords]
+            # 2. 뉴스 제목들만 합쳐서 하나의 문자열로 만들기
+            all_titles = " ".join([item["title"] for item in news_items])
 
-        count = Counter(words)
+            # 3. 워드클라우드 객체 설정
+            wc = WordCloud(
+                font_path=r"C:\Windows\Fonts\Gulim.ttc",
+                background_color="white",
+                max_words=100,
+                random_state=99,
+                stopwords=[
+                    "뉴스",
+                    "경제",
+                    "시장",
+                    "오늘",
+                    "날",
+                    "포토",
+                    "기자",
+                    "증시",
+                    "분석",
+                ],
+                mask=my_mask,
+                contour_color="black",
+                contour_width=3,
+            )
 
-        # 워드클라우드 생성 (Windows는 malgun.ttf, Mac은 AppleGothic.ttf)
-        # 폰트 경로가 틀리면 오류가 나니 주의하세요!
-        wc = WordCloud(
-            font_path="malgun.ttf", background_color="white", width=800, height=400
-        ).generate_from_frequencies(count)
+            # 4. 문자열 데이터로 워드클라우드 생성
+            wc.generate(all_titles)
 
-        return wc
+            # 5. 그래프
+            fig = plt.figure(figsize=(10, 5))
+            plt.imshow(wc, interpolation="bilinear")
+            plt.axis("off")
+            st.pyplot(fig)
 
-    def wcChart(new_items, back_mask, max_words, emp):
-        # 배경 이미지 선택
-        img = Image.open("data/background.png")
-        my_mask = np.array(img)
-
-        wc = WordCloud(
-            font_path=r"C:\Windows\Fonts\Gulim.ttc",
-            background_color="white",  # 배경색 지정
-            max_words=max_words,  # 함수의 매개변수인 max_word 입력
-            random_state=99,  # 출력위치 고정 랜덤 시드값
-            stopwords=[
-                "있다",
-                "및",
-                "수",
-                "이",
-                "다",
-                "the",
-                "a",
-                "of",
-                "to",
-                "in",
-                "and",
-            ],  # 제외하고 싶은 단어 설정(불용어 설정)
-            mask=my_mask,
-            contour_color="black",
-            contour_width=3,
-        )
-
-        wc.generate(new_items)
-        fig = plt.subplots(figsize=(10, 5))
-        plt.imshow(wc, interpolation="bilinear")
-        plt.axis("off")
-        st.pyplot(fig)
+        except Exception as e:
+            st.error(f"함수 내부 에러 발생: {e}")
+            raise e
 
     # --- UI 렌더링 ---
     st.header("🔍 시장 심리 및 뉴스 분석")
@@ -134,14 +121,16 @@ def render_sentiment_news():
     st.divider()
 
     # ② 워드클라우드
-    st.subheader("☁️ 뉴스 키워드 트렌드")
+    st.subheader("☁️ 뉴스 키워드 트렌드")  # 주의깊게 봐야할 회사들로 교체?
+
     news_items = get_naver_news()
 
     if news_items:
         try:
-            wcChart(corpus, back_mask, max_words, emp)
+            data_amount = st.slider("가져올 뉴스 개수", 1, 50, 10)
+            wcChart(news_items)
         except Exception as e:
-            st.info("워드클라우드를 생성하려면 한글 폰트 설정이 필요합니다.")
+            st.warning(f"워드클라우드 생성 실패: {e}")
 
     st.divider()
 
