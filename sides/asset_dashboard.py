@@ -6,6 +6,9 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+plt.rcParams["font.family"] = "Malgun Gothic"   # Windows
+plt.rcParams["axes.unicode_minus"] = False
+
 # =============================================================================
 # 설정
 # =============================================================================
@@ -14,7 +17,6 @@ ASSETS = {
     "S&P 500": "^GSPC",
     "Gold": "GLD",
     "US Bond": "TLT",
-    "Dollar Index": "DX-Y.NYB",
     "Bitcoin": "BTC-USD",
     "QQQ": "QQQ",
 }
@@ -40,7 +42,7 @@ def load_prices(tickers: list[str], yf_period: str) -> pd.DataFrame:
     try:
         df = yf.download(
             tickers=tickers,
-            period=yf_period,   # ✅ 매핑 없이 그대로 사용
+            period=yf_period, 
             auto_adjust=False,
             progress=False,
             group_by="column",
@@ -143,7 +145,7 @@ def plot_period_return_bar(
     # ---- 색상 결정 ----
     if color_mode == "수익률 +/-":
         colors = [
-            "#2ca02c" if v >= 0 else "#d62728"
+            "#4c68aa" if v >= 0 else "#df964ce3"
             for v in period_returns.values
         ]
 
@@ -184,7 +186,7 @@ def plot_period_return_bar(
 # =============================================================================
 
 def render_asset_dashboard():
-    st.title("① 주요 자산 현황")
+    st.title("🧐 주요 자산 현황")
     st.caption("선택한 자산들의 가격 흐름과 기간 수익률을 비교합니다.")
 
     # ---------------- UI ----------------
@@ -248,47 +250,51 @@ def render_asset_dashboard():
     # ---------------- KPI ----------------
     st.subheader("요약 지표")
 
-    last_prices = prices.iloc[-1]
-    volatility = (daily_returns.std() * 100) if not daily_returns.empty else pd.Series(dtype="float64")
+    # 최소 계산
+    pr = period_returns
+    vol = daily_returns.std() * 100 if not daily_returns.empty else pd.Series(dtype="float64")
 
-    # ✅ 정합성 있게 하나로 모아서, 자산명으로 rename
-    kpi = pd.DataFrame({
-        "Last Close": last_prices,
-        "Period Return (%)": period_returns,
-        "Volatility (%)": volatility,
-    })
+    # 공통 인덱스 정합
+    idx = prices.columns
+    pr = pr.reindex(idx)
+    vol = vol.reindex(idx)
 
-    # 자산명 인덱스로 변환
-    kpi.index = kpi.index.map(lambda t: label_map.get(t, t))
+    # 정렬
+    pr = pr.sort_values(ascending=False)
 
-    # 보기 좋게 Period Return 기준 정렬
-    if "Period Return (%)" in kpi.columns:
-        kpi = kpi.sort_values("Period Return (%)", ascending=False)
+    # 최대 5개만 표시
+    items = pr.head(5)
 
-    # 여러 자산도 보기 좋게 "4개씩 줄바꿈"으로 metric 표시
-    items = list(kpi.iterrows())
-    chunk = 4
-    for start in range(0, len(items), chunk):
-        row_items = items[start:start + chunk]
-        cols = st.columns(len(row_items))
-        for col, (name, row) in zip(cols, row_items):
-            pr = row.get("Period Return (%)")
-            vol = row.get("Volatility (%)")
-            col.metric(
-                label=name,
-                value=f"{pr:.2f}%" if pd.notna(pr) else "N/A",
-                delta=f"{vol:.2f}% vol" if pd.notna(vol) else None,
-            )
+    cols = st.columns(len(items))
+    for col, ticker in zip(cols, items.index):
+        name = label_map.get(ticker, ticker)
+        value = items[ticker]
+        v = vol.get(ticker)
+
+    col.metric(
+        label=name,
+        value=f"{value:.2f}%" if pd.notna(value) else "N/A",
+        delta=f"{v:.1f}% vol" if pd.notna(v) else None,
+    )
 
     # ---------------- 차트 ----------------
-    st.divider()
-    st.subheader("종가 추이")
-    plot_price_line(prices, label_map=label_map, normalize=normalize)
+    tabs = st.tabs(["📈 가격 추이", "📊 기간 수익률"])
 
-    st.divider()
-    st.subheader("기간 수익률 (%)")
-    plot_period_return_bar(period_returns, label_map=label_map, color_mode=bar_color_mode,)
+    with tabs[0]:
+        st.subheader("종가 추이")
+        plot_price_line(
+            prices,
+            label_map=label_map,
+            normalize=normalize,
+        )
 
+    with tabs[1]:
+        st.subheader("기간 수익률 (%)")
+        plot_period_return_bar(
+            period_returns,
+            label_map=label_map,
+            color_mode=bar_color_mode,
+        )
     # ---------------- 데이터 확인 ----------------
     with st.expander("데이터 미리보기"):
         st.caption("Prices (Close)")
