@@ -23,6 +23,15 @@ ASSETS = {
     "QQQ": "QQQ",
 }
 
+ASSET_COLORS = {
+    "S&P 500": "#2F4F4F",
+    "QQQ": "#492176",
+    "Gold": "#6E2800",
+    "Gold ETF": "#C44E52",
+    "US Bond": "#23562F",
+    "Bitcoin": "#2E205C",
+}
+
 TICKER_TO_NAME = {v: k for k, v in ASSETS.items()}
 
 # yfinance period 문자열을 그대로 사용
@@ -111,12 +120,13 @@ def plot_price_line(
 
     for ticker in df.columns:
         label = label_map.get(ticker, ticker)
-        ax.plot(df.index, df[ticker], label=label, linewidth=1.8)
+        color = ASSET_COLORS.get(label, "#4C72B0")
+        ax.plot(df.index, df[ticker], label=label, linewidth=1.8, color=color)
 
     ax.set_title("자산별 일일 종가 추이")
     ax.set_ylabel("Index (Start=100)" if normalize else "Price")
     ax.grid(alpha=0.25)
-
+    
     ax.legend(
         loc="upper left",
         ncols=3,
@@ -154,19 +164,11 @@ def plot_period_return_bar(
         ]
 
     elif color_mode == "자산별":
-        ASSET_COLORS = {
-            "S&P 500": "#4C72B0",
-            "QQQ": "#BC65A0",
-            "Gold": "#DD8452",
-            "Gold ETF": "#C44E52",
-            "US Bond": "#55A868",
-            "Bitcoin": "#8172B3",
-        }
         colors = [
             ASSET_COLORS.get(name, "#4C72B0") for name in s.index]
 
     else:  # 기본
-        colors = "#0A68FF"
+        colors = "#253F96"
 
     # ---- 차트 ----
     labels = s.index.tolist()
@@ -174,12 +176,26 @@ def plot_period_return_bar(
     pos = np.arange(len(labels))
 
     fig, ax = plt.subplots(figsize=(5, 3))
-    ax.bar(pos, values, color=colors, width=0.4)  # width 고정
+    bars = ax.bar(pos, values, color=colors, width=0.4)  # width 고정
 
     ax.set_title("기간 수익률 (%)")
     ax.set_ylabel("%")
     ax.axhline(0, color="black", linewidth=0.8)
     ax.grid(axis="y", alpha=0.3)
+ 
+    # ✅ 숫자 라벨 직접 제어 (가장 안정적)
+    for bar, v in zip(bars, values):
+        height = bar.get_height()
+
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            height + (1.5 if height >= 0 else -2.5),  # 👈 간격 핵심
+            f"{v:.1f}%",
+            ha="center",
+            va="bottom" if height >= 0 else "top",
+            fontsize=9,
+            color="#121212"
+        )
 
     ax.set_xticks(pos)
     ax.set_xticklabels(labels, fontsize=9)  # 자산명 표시
@@ -192,8 +208,8 @@ def plot_period_return_bar(
 # =============================================================================
 
 def render_asset_dashboard():
-    st.title("🧐 주요 자산 현황")
-    st.caption("선택한 자산들의 가격 흐름과 기간 수익률을 비교합니다.")
+    st.title("▼ 시장 현황")
+    st.caption("선택한 자산의 가격 추이와 기간 수익률을 비교합니다.")
 
     # ---------------- UI ----------------
     with st.container():
@@ -215,8 +231,9 @@ def render_asset_dashboard():
 
         with col3:
             normalize = st.checkbox(
-                "정규화 (시작=100)",
+                "지수화 (시작=100)",
                 value=True,
+                help="모든 자산의 시작 시점을 100으로 맞춰 수익률을 비교합니다."
             )
         with col4:
             bar_color_mode = st.selectbox(
@@ -254,7 +271,7 @@ def render_asset_dashboard():
     )
 
     # ---------------- KPI ----------------
-    st.subheader("요약 지표")
+    st.subheader("※ 요약 지표")
 
     # 최소 계산
     pr = period_returns
@@ -281,10 +298,18 @@ def render_asset_dashboard():
         )
 
     # ---------------- 차트 ----------------
-    tabs = st.tabs(["📈 가격 추이", "📊 기간 수익률"])
+    tabs = st.tabs(["📈 가격 추이(USD)", "📊 기간 수익률(%)"])
 
     with tabs[0]:
-        st.markdown("**가격 추이**는 자산의 종가가 시간이 지나면서 어떻게 오르고 내렸는지를 선으로 보여줍니다.")
+        st.markdown("자산 가격이 시간에 따라 어떻게 변해왔는지(흐름)를 보여줍니다. "
+            "지수화(시작=100)를 켜면 자산 간 **상대 성과**를 더 쉽게 비교할 수 있어요."
+        )
+        st.info(
+            "💡 해석 팁\n"
+            "- **기울기**: 성과(상대적으로 더 빠르게 오르거나 내림)\n"
+            "- **흔들림(진폭)**: 변동성(체감 위험)\n"
+            "- 선이 **같이 움직이면** 동조, **갈라지면** 시장의 선택(리스크 온/오프) 신호일 수 있어요."
+        )
         plot_price_line(
             prices,
             label_map=label_map,
@@ -292,7 +317,15 @@ def render_asset_dashboard():
         )
 
     with tabs[1]:
-        st.markdown("**기간 수익률**(%)은 선택한 기간의 시작 가격대비, 지금 가격이 몇 % 변했는지 보여줍니다.")
+        st.markdown("선택한 기간의 **시작 대비 현재**가 몇 % 변했는지 요약한 결과입니다. "
+            "자산별 성과를 한 번에 비교할 때 유용해요."
+        )
+        st.info(
+            "💡 해석 팁\n"
+            "- 기간 수익률은 **결과 요약**이에요. (과정은 ‘가격 추이’에서 확인)\n"
+            "- **수익률 +/-** 모드: 상승/하락 방향을 빠르게 파악\n"
+            "- **자산별** 모드: 자산 정체성(색상)을 유지해 비교가 쉬워요."
+        )
         plot_period_return_bar(
             period_returns.rename(index=label_map),
             label_map=label_map,
