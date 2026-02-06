@@ -10,7 +10,7 @@ import re
 from wordcloud import WordCloud
 from PIL import Image
 from collections import Counter
-
+from datetime import datetime, timedelta
 
 # 1. 네이버 API 설정
 NAVER_CLIENT_ID = "5oVXMqrseId0LObau9b9"
@@ -19,10 +19,11 @@ NAVER_CLIENT_SECRET = "JTk7ZQRTpj"
 
 # ================ 함수 선언 ==================
 @st.cache_data(ttl=3600)  # 1시간동안 캐싱
-def get_vix_data():
+def get_vix_data(start_date):
+    # 날짜 지정가능하게 수정
     # 공포지수 데이터 가져오기
     try:
-        vix = yf.download("^VIX", period="6mo")
+        vix = yf.download("^VIX", start=start_date, progress=False)
         if not vix.empty and len(vix) >= 2:
             # 가져온 데이터가 비어있으면 안됨
             # 전날과 오늘의 비교를 해야하므로 최소 2개
@@ -197,12 +198,20 @@ def render_sentiment_news():
     st.header("🔍 시장 심리 및 뉴스 분석")
 
     # ① VIX 지수
-    vix_val, vix_delta, vix_history = get_vix_data()
+
+    col_v1, col_v2 = st.columns([1, 2])
+
+    with col_v1:
+        st.subheader("📊 공포 지수 (VIX)")
+
+    with col_v2:
+        vix_start_date = st.date_input(
+            "조회 시작일", datetime.now() - timedelta(days=30)
+        )
+
+    vix_val, vix_delta, vix_history = get_vix_data(vix_start_date)
 
     if vix_val is not None:
-        st.subheader("📊 오늘의 공포 지수 (VIX)")
-
-        # 1:2 비율로 컬럼 분할 (왼쪽: 수치, 오른쪽: 그래프)
         col1, col2 = st.columns([1, 2])
 
         with col1:
@@ -212,20 +221,21 @@ def render_sentiment_news():
                 delta=f"{vix_delta:.2f}",
                 delta_color="inverse",
             )
-            # 상태 메시지 표시
+
             if vix_val < 20:
                 st.success("☀️ 자 드가자")
             elif vix_val < 30:
                 st.warning("☁️ 하고싶으면 해보세요 ㅋㅋ")
             else:
                 st.error(
-                    "🚨 차트보면서 땀흘리면 운동 많이 될거야..스트레스 많이 받을거야.. "
+                    "🚨 차트보면서 땀흘리면 운동 많이 될거야..스트레스 많이 받을거야.."
                 )
 
         with col2:
-            # VIX 추세 그래프 (최근 1달)
-            st.caption("📉 최근 1개월 VIX 추이")
-            st.line_chart(vix_history, height=150, color="#FF0000")  # 붉은색 라인 차트
+            st.caption("📉 VIX 추세 그래프")
+            st.line_chart(vix_history, height=150, color="#FF0000")
+    else:
+        st.error("VIX 데이터를 불러오지 못했습니다.")
 
     ""
     "---"
@@ -248,16 +258,23 @@ def render_sentiment_news():
     ""
 
     # ③ 뉴스 헤드라인 리스트
-    st.subheader("📰 실시간 주요 뉴스")
+    col_n1, col_n2 = st.columns([3, 1])
+    with col_n1:
+        st.subheader("📰 실시간 주요 뉴스")
+    with col_n2:
+        # 뉴스 개수 조절 슬라이더 (5개 ~ 30개)
+        news_view_count = st.slider("표시 개수", 5, 30, 10)
 
     if news_items:
-        # 기업별로 하나만 남긴 리스트를 받음
         unique_news = get_unique_companies(news_items)
 
-        # 상위 15개 기업 출력
-        for item in unique_news[:15]:
-            with st.expander(f"📌 {item['title']}"):
-                st.write(item["description"])
-                st.markdown(f"[기사 원문 보기]({item['link']})")
+        if unique_news:
+            # 슬라이더 값(:news_view_count)만큼만 잘라서 보여줌
+            for item in unique_news[:news_view_count]:
+                with st.expander(f"📌 {item['title']}"):
+                    st.write(item["description"])
+                    st.markdown(f"[기사 원문 보기]({item['link']})")
+        else:
+            st.write("필터링된 뉴스가 없습니다.")
     else:
         st.write("표시할 뉴스가 없습니다.")
