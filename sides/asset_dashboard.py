@@ -208,7 +208,7 @@ def plot_period_return_bar(
 # =============================================================================
 
 def render_asset_dashboard():
-    st.title("▼ 시장 현황")
+    st.title("🪙 거시경제 주요 지표 현황")
     st.caption("선택한 자산의 가격 추이와 기간 수익률을 비교합니다.")
 
     # ---------------- UI ----------------
@@ -217,14 +217,14 @@ def render_asset_dashboard():
 
         with col1:
             selected_assets = st.multiselect(
-                "자산",
+                "자산 선택",
                 options=list(ASSETS.keys()),
-                default=["S&P 500","Gold"],
+                default=["S&P 500","US Bond"],
             )
 
         with col2:
             yf_period = st.selectbox(
-                "기간",
+                "기간 선택",
                 YF_PERIODS,
                 index=1,  # "1mo"
             )
@@ -237,7 +237,7 @@ def render_asset_dashboard():
             )
         with col4:
             bar_color_mode = st.selectbox(
-                "수익률 색상",
+                "수익률 색상 테마",
                 options=["기본", "수익률 +/-", "자산별"],
                 index=1,
         )
