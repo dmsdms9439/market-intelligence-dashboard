@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -15,7 +16,8 @@ plt.rcParams["axes.unicode_minus"] = False
 
 ASSETS = {
     "S&P 500": "^GSPC",
-    "Gold": "GLD",
+    "Gold": "GC=F",
+    "Gold ETF":"GLD",
     "US Bond": "TLT",
     "Bitcoin": "BTC-USD",
     "QQQ": "QQQ",
@@ -24,7 +26,7 @@ ASSETS = {
 TICKER_TO_NAME = {v: k for k, v in ASSETS.items()}
 
 # yfinance period 문자열을 그대로 사용
-YF_PERIODS = ["5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "max"]
+YF_PERIODS = ["5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "20y", "40y"]
 
 # =============================================================================
 # 데이터 로딩 & 계산
@@ -78,16 +80,15 @@ def calc_daily_returns(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def calc_period_returns(prices: pd.DataFrame) -> pd.Series:
-    if prices is None or prices.empty or len(prices) < 2:
+    if prices is None or prices.empty:
         return pd.Series(dtype="float64")
 
-    first = prices.iloc[0]
-    last = prices.iloc[-1]
+    first = prices.apply(lambda s: s.dropna().iloc[0] if s.dropna().size else np.nan)
+    last  = prices.apply(lambda s: s.dropna().iloc[-1] if s.dropna().size else np.nan)
+
     out = (last / first - 1.0) * 100.0
     out.name = "period_return_pct"
     return out
-
-
 # =============================================================================
 # 차트
 # =============================================================================
@@ -103,7 +104,8 @@ def plot_price_line(
 
     df = prices.copy()
     if normalize:
-        df = df / df.iloc[0] * 100.0
+        base = df.apply(lambda s: s.dropna().iloc[0] if s.dropna().size else np.nan)
+        df = df.divide(base, axis=1) * 100.0  # ✅ 컬럼별 기준
 
     fig, ax = plt.subplots(figsize=(10, 4))
 
@@ -111,7 +113,7 @@ def plot_price_line(
         label = label_map.get(ticker, ticker)
         ax.plot(df.index, df[ticker], label=label, linewidth=1.8)
 
-    ax.set_title("자산별 종가 추이")
+    ax.set_title("자산별 일일 종가 추이")
     ax.set_ylabel("Index (Start=100)" if normalize else "Price")
     ax.grid(alpha=0.25)
 
@@ -142,44 +144,48 @@ def plot_period_return_bar(
         st.info("표시할 수익률 데이터가 없습니다.")
         return
 
+    s = period_returns.rename(index=label_map)
+
     # ---- 색상 결정 ----
     if color_mode == "수익률 +/-":
         colors = [
-            "#4c68aa" if v >= 0 else "#df964ce3"
-            for v in period_returns.values
+            "#405fa9" if v >= 0 else "#ad3d3de2"
+            for v in s.values
         ]
 
     elif color_mode == "자산별":
         ASSET_COLORS = {
             "S&P 500": "#4C72B0",
+            "QQQ": "#BC65A0",
             "Gold": "#DD8452",
+            "Gold ETF": "#C44E52",
             "US Bond": "#55A868",
-            "Dollar Index": "#C44E52",
             "Bitcoin": "#8172B3",
         }
         colors = [
-            ASSET_COLORS.get(label_map.get(ticker, ""), "#4C72B0")
-            for ticker in period_returns.index
-        ]
+            ASSET_COLORS.get(name, "#4C72B0") for name in s.index]
 
     else:  # 기본
-        colors = "#4C72B0"
+        colors = "#0A68FF"
 
     # ---- 차트 ----
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.bar(period_returns.index, period_returns.values, color=colors)
+    labels = s.index.tolist()
+    values = s.values.astype(float)
+    pos = np.arange(len(labels))
+
+    fig, ax = plt.subplots(figsize=(5, 3))
+    ax.bar(pos, values, color=colors, width=0.4)  # width 고정
 
     ax.set_title("기간 수익률 (%)")
     ax.set_ylabel("%")
     ax.axhline(0, color="black", linewidth=0.8)
     ax.grid(axis="y", alpha=0.3)
 
-    ax.tick_params(axis="x", labelrotation=0, labelsize=9)
-    ax.tick_params(axis="y", labelsize=9)
+    ax.set_xticks(pos)
+    ax.set_xticklabels(labels, fontsize=9)  # 자산명 표시
 
     fig.tight_layout()
     st.pyplot(fig, clear_figure=True)
-
 
 # =============================================================================
 # 페이지 렌더링
@@ -262,26 +268,23 @@ def render_asset_dashboard():
     # 정렬
     pr = pr.sort_values(ascending=False)
 
-    # 최대 5개만 표시
-    items = pr.head(5)
-
-    cols = st.columns(len(items))
-    for col, ticker in zip(cols, items.index):
+    cols = st.columns(len(pr))
+    for col, ticker in zip(cols, pr.index):
         name = label_map.get(ticker, ticker)
-        value = items[ticker]
+        value = pr[ticker]
         v = vol.get(ticker)
 
-    col.metric(
-        label=name,
-        value=f"{value:.2f}%" if pd.notna(value) else "N/A",
-        delta=f"{v:.1f}% vol" if pd.notna(v) else None,
-    )
+        col.metric(
+            label=name,
+            value=f"{value:.2f}%" if pd.notna(value) else "N/A",
+            delta=f"{v:.1f}% vol" if pd.notna(v) else None,
+        )
 
     # ---------------- 차트 ----------------
     tabs = st.tabs(["📈 가격 추이", "📊 기간 수익률"])
 
     with tabs[0]:
-        st.subheader("종가 추이")
+        st.markdown("**가격 추이**는 자산의 종가가 시간이 지나면서 어떻게 오르고 내렸는지를 선으로 보여줍니다.")
         plot_price_line(
             prices,
             label_map=label_map,
@@ -289,9 +292,9 @@ def render_asset_dashboard():
         )
 
     with tabs[1]:
-        st.subheader("기간 수익률 (%)")
+        st.markdown("**기간 수익률**(%)은 선택한 기간의 시작 가격대비, 지금 가격이 몇 % 변했는지 보여줍니다.")
         plot_period_return_bar(
-            period_returns,
+            period_returns.rename(index=label_map),
             label_map=label_map,
             color_mode=bar_color_mode,
         )
