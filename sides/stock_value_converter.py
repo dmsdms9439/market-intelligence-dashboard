@@ -4,51 +4,48 @@ import FinanceDataReader as fdr
 import pandas as pd
 from datetime import datetime, timedelta
 
-# 1. 단위 데이터 설정 (수익용 / 손실용 분리)
-# 수익일 때 비교할 물건 (비싼 순)
-GAIN_DATA = [
-    {"name": "트라이폴드", "price": 3590000, "icon": "📱"},
-    {"name": "에어팟", "price": 250000, "icon": "🎧"},
-    {"name": "치킨", "price": 25000, "icon": "🍗"},
-    {"name": "두쫀쿠", "price": 7000, "icon": "🍪"},
-]
-# 손실일 때 비교할 물건 (비싼 순)
-LOSS_DATA = [
-    {"name": "기둥", "price": 1000000, "icon": "🏛️"},
-    {"name": "창문", "price": 250000, "icon": "🪟"},
+# 1. 단위 데이터 설정 (공통 사용)
+# 가격은 대략적인 현재 시세 기준
+UNIT_DATA = [
+    {"name": "제네시스", "price": 80000000, "icon": "🚘"},
+    {"name": "그랜저", "price": 40000000, "icon": "🚙"},
+    {"name": "소나타", "price": 30000000, "icon": "🚕"},
+    {"name": "아반떼", "price": 25000000, "icon": "🚗"},
+    {"name": "트라이폴드", "price": 3500000, "icon": "📱"},
+    {"name": "아이폰프맥", "price": 1900000, "icon": "📲"},  # 아이폰 16 프로맥스 기준
+    {"name": "에어팟맥스", "price": 760000, "icon": "🎧"},
+    {"name": "에어팟", "price": 250000, "icon": "🎵"},
     {"name": "치킨", "price": 25000, "icon": "🍗"},
     {"name": "두쫀쿠", "price": 7000, "icon": "🍪"},
 ]
 
 
 # 2. 유틸리티 함수들
-# 금액에 맞는 가장 적절한 단위 하나 찾기
-def get_best_unit(amount, data_list):
+def get_best_unit(amount):
+    """금액에 맞는 가장 적절한 단위 하나 찾기"""
     abs_amount = abs(amount)
 
-    # 금액에 맞는 가장 큰 단위 찾기
-    for unit in data_list:
+    # 금액에 맞는 가장 큰 단위 찾기 (비싼 순서대로 체크)
+    for unit in UNIT_DATA:
         if abs_amount >= unit["price"]:
             return unit
 
-    # 금액이 너무 작으면 가장 작은 단위(마지막 거) 반환
-    return data_list[-1]
+    # 금액이 너무 작으면 가장 작은 단위(두쫀쿠) 반환
+    return UNIT_DATA[-1]
 
 
 @st.cache_data
 def get_stock_list():
     try:
         df_kospi = fdr.StockListing("KOSPI")
-        df_kospi = df_kospi.head(
-            50
-        )  # 시가총액순으로 정렬되어 있으므로 위에서 50개만 자르기
+        df_kospi = df_kospi.head(50)  # 상위 50개
+
         df_kosdaq = fdr.StockListing("KOSDAQ")
-        df_kosdaq = df_kosdaq.head(50)  # 동일함
+        df_kosdaq = df_kosdaq.head(50)  # 상위 50개
 
         df_kospi["Symbol"] = df_kospi["Code"] + ".KS"
         df_kosdaq["Symbol"] = df_kosdaq["Code"] + ".KQ"
 
-        # 검색용 이름 생성: "삼성전자 (005930)"
         df_kospi["DisplayName"] = df_kospi["Name"] + " (" + df_kospi["Code"] + ")"
         df_kosdaq["DisplayName"] = df_kosdaq["Name"] + " (" + df_kosdaq["Code"] + ")"
 
@@ -60,8 +57,8 @@ def get_stock_list():
     except Exception as e:
         stock_map = {}
 
-    # 미국 주식 수동 추가
-    us_stocks = {
+    # 미국 주식 및 기타 종목 추가
+    custom_stocks = {
         "엔비디아 (NVDA)": "NVDA",
         "테슬라 (TSLA)": "TSLA",
         "애플 (AAPL)": "AAPL",
@@ -77,8 +74,11 @@ def get_stock_list():
         "SCHD (ETF)": "SCHD",
         "TQQQ (ETF)": "TQQQ",
         "SOXL (ETF)": "SOXL",
+        "금양 (001570)": "001570.KS",
+        "나라소프트 (384500)": "384500.KS",
     }
-    stock_map.update(us_stocks)
+    stock_map.update(custom_stocks)
+
     return stock_map
 
 
@@ -93,29 +93,22 @@ def format_korean_currency(amount):
         return f"{int(amount):,}원"
 
 
-# 3. 메인 UI 및 로직
+# 3. 메인 화면 렌더링 함수
 def render_stock_value_converter():
-    st.set_page_config(page_title="주식 환산 계산기", page_icon="🧮")
     st.title("🧮 주식 수익/손실 환산기")
-    st.markdown('##### "내 돈..."')
+    st.markdown('##### "내 돈... 대체 뭘 한 거지?"')
 
-    # 주식 목록 로드
     with st.spinner("종목 리스트 불러오는 중..."):
         STOCK_MAP = get_stock_list()
 
-    ""
-    "---"
-    ""
+    st.divider()
 
     col1, col2 = st.columns([1, 1.2])
 
     with col1:
         st.subheader("📝 입력")
 
-        # 종목 선택 (검색 가능)
         stock_options = list(STOCK_MAP.keys())
-
-        # 기본값 설정 ('삼성전자')
         default_index = 0
         for idx, name in enumerate(stock_options):
             if "삼성전자" in name and "005930" in name:
@@ -123,7 +116,7 @@ def render_stock_value_converter():
                 break
 
         target_name = st.selectbox(
-            "종목 선택 (타이핑해서 검색 가능)",
+            "종목 선택",
             stock_options,
             index=default_index,
             placeholder="종목명 입력...",
@@ -136,7 +129,7 @@ def render_stock_value_converter():
         invest_money = st.number_input(
             "금액",
             10000,
-            1000000000,
+            10000000000,
             1000000,
             100000,
             format="%d",
@@ -161,78 +154,121 @@ def render_stock_value_converter():
                         start_p = float(df["Close"].iloc[0])
                         curr_p = float(df["Close"].iloc[-1])
 
-                        # 수익률 계산
+                        # 계산 로직: (현재 평가금액) - (투자 원금)
+                        total_value = (invest_money / start_p) * curr_p
+                        net_profit = total_value - invest_money
                         rate = (curr_p - start_p) / start_p
-                        total_profit = invest_money * rate  # 평가손익
-                        abs_profit = abs(total_profit)  # 절대값
 
-                        # 1. 기본 정보 출력
+                        abs_profit = abs(net_profit)
+
+                        # 1. 수치 출력
                         st.success(f"**{target_name}**")
-                        m1, m2 = st.columns(2)
-                        m1.metric("수익률", f"{rate*100:.2f}%")
-                        m2.metric("평가손익", f"{total_profit:,.0f}원")
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("수익률", f"{rate*100:.2f}%")
+                        c2.metric("총 평가액", f"{format_korean_currency(total_value)}")
+                        c3.metric("순수익", f"{net_profit:,.0f}원")
 
                         st.divider()
 
-                        # 2. [핵심] 수익 vs 손실에 따라 다른 리스트 적용
-                        if total_profit > 0:
-                            # 수익일 때 -> GAIN_DATA 사용
-                            best_unit = get_best_unit(total_profit, GAIN_DATA)
-                            unit_name = best_unit["name"]
-                            unit_price = best_unit["price"]
-
-                            count = abs_profit / unit_price
-
+                        # 2. 아이템 비교 로직 (공통 UNIT_DATA 사용)
+                        best_unit = get_best_unit(net_profit)
+                        unit_name = best_unit["name"]
+                        unit_price = best_unit["price"]
+                        count = abs_profit / unit_price
+                        # (A) 수익일 때 멘트
+                        if net_profit > 0:
                             st.balloons()
-                            st.markdown(f"### 🎉 **{unit_name} {count:,.1f}개** 이득!")
+                            st.markdown(
+                                f"### 🎉 **{unit_name} {count:,.1f}개** 벌었습니다!"
+                            )
 
-                            # 수익 멘트
-                            if unit_name == "트라이폴드":
+                            if unit_name == "제네시스":
                                 st.write(
-                                    f"와우! **트라이폴드 {count:,.1f}개**를 꽁짜로!"
+                                    f"와우.. **G80 {count:,.1f}대** 출고 가능합니다! 회장님!"
+                                )
+                            elif unit_name == "그랜저":
+                                st.write(
+                                    f"성공의 상징 **그랜저가 {count:,.1f}대**! 부자되셨네요."
+                                )
+                            elif unit_name == "소나타":
+                                st.write(
+                                    f"국민 세단 **소나타 {count:,.1f}대** 값입니다. 든든하네요."
+                                )
+                            elif unit_name == "아반떼":
+                                st.write(
+                                    f"사회초년생의 드림카 **아반떼 {count:,.1f}대** 획득!"
+                                )
+                            elif unit_name == "트라이폴드":
+                                st.write(
+                                    f"세 번 접는 폰 **트라이폴드 {count:,.1f}개** 살 수 있어요!"
+                                )
+                            elif unit_name == "아이폰프맥":
+                                st.write(
+                                    f"최신형 **아이폰 프맥 {count:,.1f}개** 겟! 카메라가 몇 개야?"
+                                )
+                            elif unit_name == "에어팟맥스":
+                                st.write(
+                                    f"귀에 얹는 사치 **에어팟 맥스 {count:,.1f}개** 가능!"
                                 )
                             elif unit_name == "에어팟":
                                 st.write(
-                                    f"집에 **에어팟 {count:,.1f}개**!! 귀는 두갠데 !!!"
+                                    f"**에어팟 {count:,.1f}개**! 귀는 두 개뿐인데.. 선물하시죠!"
                                 )
                             elif unit_name == "치킨":
                                 st.write(
-                                    f"오늘 저녁 친구들 불러서 **치킨 {count:,.1f}마리** 파티!!!!!!!!!!!"
+                                    f"오늘 골든벨 울립시다! **치킨 {count:,.1f}마리** 파티!"
                                 )
                             else:  # 두쫀쿠
                                 st.write(
-                                    f"달달한 **두쫀쿠 {count:,.1f}개** 사 먹을 수 있네요!"
+                                    f"소소하지만 확실한 행복.. **두쫀쿠 {count:,.1f}개** 냠냠!"
                                 )
 
-                        elif total_profit < 0:
-                            # 손실일 때 -> LOSS_DATA 사용
-                            best_unit = get_best_unit(total_profit, LOSS_DATA)
-                            unit_name = best_unit["name"]
-                            unit_price = best_unit["price"]
-
-                            count = abs_profit / unit_price
-
+                        # 손실일 때 멘트
+                        elif net_profit < 0:
                             st.snow()
                             st.markdown(
-                                f"### 😭 **{unit_name} {count:,.1f}개** 증발..."
+                                f"### 😭 **{unit_name} {count:,.1f}개** 날렸습니다..."
                             )
 
-                            # 손실 멘트
-                            if unit_name == "기둥":
+                            if unit_name == "제네시스":
                                 st.error(
-                                    f"주주님의 돈으로 회사 건물 **기둥 {count:,.1f}개**를 튼튼하게 세워주셨어요 !!!!!!!!ㅋㅋ"
+                                    f"주주님 덕분에 대주주가 **제네시스 {count:,.1f}대** 새로 뽑으셨답니다.."
                                 )
-                            elif unit_name == "창문":
+                            elif unit_name == "그랜저":
                                 st.error(
-                                    f"찬바람 들지 말라고 회사 **창문 {count:,.1f}개**를 교체해 주셨군요..."
+                                    f"방금 길에 지나가는 **그랜저 {count:,.1f}대**.. 그거 님 돈입니다.."
+                                )
+                            elif unit_name == "소나타":
+                                st.error(
+                                    f"택시 탈 때마다 생각나겠네요. 내 **소나타 {count:,.1f}대**.."
+                                )
+                            elif unit_name == "아반떼":
+                                st.error(
+                                    f"사회초년생 차 **아반떼 {count:,.1f}대**를 그냥 공중분해 시키셨군요.."
+                                )
+                            elif unit_name == "트라이폴드":
+                                st.error(
+                                    f"폰은 접어도 되지만 계좌는 접으면 안 되는데.. **트라이폴드 {count:,.1f}개** 증발.."
+                                )
+                            elif unit_name == "아이폰프맥":
+                                st.error(
+                                    f"사과 농장에 기부하셨습니다. **아이폰 프맥 {count:,.1f}개** 안녕.."
+                                )
+                            elif unit_name == "에어팟맥스":
+                                st.error(
+                                    f"노이즈 캔슬링이 필요해요. 잔소리 안 들리게.. **에어팟 맥스 {count:,.1f}개**.."
+                                )
+                            elif unit_name == "에어팟":
+                                st.error(
+                                    f"길가다 하수구에 **에어팟 {count:,.1f}개** 빠뜨린 기분.."
                                 )
                             elif unit_name == "치킨":
                                 st.error(
-                                    f"직원들 야근 특식으로 **치킨 {count:,.1f}마리** 쏘셨습니다. 천사네요..."
+                                    f"전 직원 야근 간식 **치킨 {count:,.1f}마리** 화끈하게 쏘셨습니다."
                                 )
                             else:  # 두쫀쿠
                                 st.error(
-                                    f"길가다 **두쫀쿠 {count:,.1f}개** 떨어뜨린 셈 칩시다..."
+                                    f"편의점 갈 때마다 눈물 날 듯.. **두쫀쿠 {count:,.1f}개** 떨어뜨림.."
                                 )
 
                         else:
