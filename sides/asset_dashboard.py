@@ -217,9 +217,7 @@ def render_asset_dashboard():
         with col3:
             normalize = st.checkbox(
                 "지수화 (시작=100)",
-                "지수화 (시작=100)",
                 value=True,
-                help="모든 자산의 시작 시점을 100으로 맞춰 수익률을 비교합니다."
                 help="모든 자산의 시작 시점을 100으로 맞춰 수익률을 비교합니다."
             )
         with col4:
@@ -227,7 +225,7 @@ def render_asset_dashboard():
                 "수익률 색상 테마",
                 options=["기본", "수익률 +/-", "자산별"],
                 index=1,
-        )
+            )
             
     selected_tickers = [ASSETS[a] for a in selected_assets] if selected_assets else []
     if not selected_tickers:
@@ -296,7 +294,6 @@ def render_asset_dashboard():
         )
 
     # ---------------- 차트 ----------------
-    tabs = st.tabs(["📈 가격 추이(USD)", "📊 기간 수익률(%)"])
     tabs = st.tabs(["📈 가격 추이(USD)", "📊 기간 수익률(%)"])
 
     with tabs[0]:
