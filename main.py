@@ -19,5 +19,5 @@ elif menu == "자산 상관 분석":
 elif menu == "뉴스·심리 분석":
     render_sentiment_news()
 
-elif menu == "주식 환산 계산기":
+elif menu == "현실 손익 환산기":
     render_stock_value_converter()
