@@ -4,10 +4,7 @@ import FinanceDataReader as fdr
 import pandas as pd
 from datetime import datetime, timedelta
 
-# ==========================================
 # 1. 단위 데이터 설정 (수익용 / 손실용 분리)
-# ==========================================
-
 # 수익일 때 비교할 물건 (비싼 순)
 GAIN_DATA = [
     {"name": "트라이폴드", "price": 3590000, "icon": "📱"},
@@ -15,7 +12,6 @@ GAIN_DATA = [
     {"name": "치킨", "price": 25000, "icon": "🍗"},
     {"name": "두쫀쿠", "price": 7000, "icon": "🍪"},
 ]
-
 # 손실일 때 비교할 물건 (비싼 순)
 LOSS_DATA = [
     {"name": "기둥", "price": 1000000, "icon": "🏛️"},
@@ -24,12 +20,9 @@ LOSS_DATA = [
     {"name": "두쫀쿠", "price": 7000, "icon": "🍪"},
 ]
 
-# ==========================================
+
 # 2. 유틸리티 함수들
-# ==========================================
-
-
-# [핵심] 금액에 맞는 가장 적절한 단위 하나 찾기
+# 금액에 맞는 가장 적절한 단위 하나 찾기
 def get_best_unit(amount, data_list):
     abs_amount = abs(amount)
 
@@ -46,7 +39,11 @@ def get_best_unit(amount, data_list):
 def get_stock_list():
     try:
         df_kospi = fdr.StockListing("KOSPI")
+        df_kospi = df_kospi.head(
+            50
+        )  # 시가총액순으로 정렬되어 있으므로 위에서 50개만 자르기
         df_kosdaq = fdr.StockListing("KOSDAQ")
+        df_kosdaq = df_kosdaq.head(50)  # 동일함
 
         df_kospi["Symbol"] = df_kospi["Code"] + ".KS"
         df_kosdaq["Symbol"] = df_kosdaq["Code"] + ".KQ"
@@ -96,13 +93,9 @@ def format_korean_currency(amount):
         return f"{int(amount):,}원"
 
 
+# 3. 메인 UI 및 로직
 def render_stock_value_converter():
-
-    # ==========================================
-    # 3. 메인 UI 및 로직
-    # ==========================================
     st.set_page_config(page_title="주식 환산 계산기", page_icon="🧮")
-
     st.title("🧮 주식 수익/손실 환산기")
     st.markdown('##### "내 돈..."')
 
