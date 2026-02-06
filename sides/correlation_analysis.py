@@ -7,7 +7,24 @@ from datetime import date, timedelta
 # -----------------------------
 # 자산 분류
 # -----------------------------
-ASSETS = ["BTC-USD", "^GSPC", "QQQ", "GLD", "TLT", "DX-Y.NYB"]
+
+ASSETS_TO_TICK = {
+    "S&P 500": "^GSPC",
+    "Gold": "GC=F",
+    "US Bond": "TLT",
+    "Bitcoin": "BTC-USD",
+    "QQQ": "QQQ",
+    "USD Index": "DX-Y.NYB",
+}
+
+TICK_TO_ASSETS = {
+    "^GSPC": "S&P 500",
+    "GC=F": "Gold",
+    "TLT": "US Bond",
+    "BTC-USD": "Bitcoin",
+    "QQQ": "QQQ",
+    "DX-Y.NYB": "USD Index",
+}
 
 
 @st.cache_data(ttl=3600)
@@ -70,29 +87,37 @@ def render_correlation_analysis():
     # -----------------------------
     st.subheader("📌 자산 선택")
 
-    risk_assets = st.multiselect("위험자산", options=ASSETS, default=ASSETS)
+    risk_assets = st.multiselect(
+        "위험자산",
+        options=list(ASSETS_TO_TICK.keys()),
+        default=list(ASSETS_TO_TICK.keys()),
+    )
 
-    safe_assets = st.multiselect("안전자산", options=ASSETS, default=ASSETS)
+    safe_assets = st.multiselect(
+        "안전자산",
+        options=list(ASSETS_TO_TICK.keys()),
+        default=list(ASSETS_TO_TICK.keys()),
+    )
 
     tickers = risk_assets + safe_assets
+    selected_tickers = [ASSETS_TO_TICK[a] for a in tickers] if tickers else []
 
     if len(tickers) < 2:
         st.warning("자산을 2개 이상 선택하세요.")
         return
-
     # -----------------------------
     # 데이터 로드 & 수익률 계산
     # -----------------------------
-    price_df = load_price_data(tickers, start_date, end_date)
+    price_df = load_price_data(selected_tickers, start_date, end_date)
 
     if price_df.empty:
         st.error("데이터를 불러오지 못했습니다.")
         return
 
-    returns = calculate_daily_returns(price_df)
+    returns = calculate_daily_returns(price_df).rename(columns=TICK_TO_ASSETS)
 
     st.subheader("📈 선택 자산 일간 수익률")
-    st.dataframe(returns.tail(10).style.format("{:.4%}"))
+    False
 
     # -----------------------------
     # 상관관계 계산
@@ -101,14 +126,15 @@ def render_correlation_analysis():
 
     # 위험자산 vs 안전자산만 추출
     corr_rs = corr.loc[risk_assets, safe_assets]
+    # corr_rs.index = risk_assets
+    # corr_rs.columns = safe_assets
 
     # -----------------------------
     # 히트맵 시각화
     # -----------------------------
     st.subheader("🔥 위험자산–안전자산 상관관계 히트맵")
 
-    x_order = corr_rs.abs().mean(axis=0).sort_values(ascending=True).index
-
+    x_order = corr_rs.abs().mean(axis=0).sort_values(ascending=False).index
     y_order = corr_rs.abs().mean(axis=1).sort_values(ascending=False).index
 
     corr_sorted = corr_rs.loc[y_order, x_order]
@@ -138,9 +164,9 @@ def render_correlation_analysis():
 
         st.subheader("📌 시장 국면 핵심 상관관계")
 
-        btc_gold = corr.loc["BTC-USD", "GLD"]
-        eq_bond = corr.loc["^GSPC", "TLT"]
-        usd_eq = corr.loc["DX-Y.NYB", "^GSPC"]
+        btc_gold = corr.loc["Bitcoin", "Gold"]
+        eq_bond = corr.loc["S&P 500", "US Bond"]
+        usd_eq = corr.loc["USD Index", "S&P 500"]
         col1, col2, col3 = st.columns(3)
 
         # BTC vs 금 → 디지털 금 논쟁
@@ -193,8 +219,17 @@ def render_correlation_analysis():
                     if btc_gold > 0.3
                     else "비트코인은 금과 독립적 → 디지털 금 논쟁 지속"
                 ),
+                "caption": """
+                    1. 일반적인 상황
+                    주식 ↓ → 채권 ↑
+                    👉 분산 효과 (Diversification)
+
+                    2. 문제 되는 상황
+                    주식 ↑, 채권 ↑ (또는 둘 다 ↓)
+                    👉 분산 구조 붕괴
+                """,
             },
-            "Equity vs Bond": {
+            "주식 vs 채권": {
                 "value": eq_bond,
                 "meaning": interpret_corr(eq_bond),
                 "macro": (
@@ -202,6 +237,15 @@ def render_correlation_analysis():
                     if eq_bond > 0
                     else "전통적 주식–채권 분산 구조 유지"
                 ),
+                "caption": """
+                    1. 일반적인 상황
+                    주식 ↓ → 채권 ↑
+                    👉 분산 효과 (Diversification)
+
+                    2. 문제 되는 상황
+                    주식 ↑, 채권 ↑ (또는 둘 다 ↓)
+                    👉 분산 구조 붕괴
+                """,
             },
             "USD Index vs Equity": {
                 "value": usd_eq,
@@ -211,8 +255,11 @@ def render_correlation_analysis():
                     if usd_eq < -0.3
                     else "달러–주식 관계 중립"
                 ),
+                "caption": """
+""",
             },
         }
+
         st.subheader("📌 상관관계 기반 해석")
 
         for k, v in interpretations.items():
@@ -223,8 +270,10 @@ def render_correlation_analysis():
                 - 해석: {v['meaning']}  
                 - 시사점: **{v['macro']}**
                 """
-                "---"
             )
+
+            st.caption(f"{v['caption']}")
+            "---"
 
         ""
         "---"
@@ -254,8 +303,8 @@ def render_correlation_analysis():
 
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         ax2.scatter(returns[r], returns[s], alpha=0.5)
-        ax2.set_xlabel(f"{r} Daily Return")
-        ax2.set_ylabel(f"{s} Daily Return")
+        ax2.set_xlabel(f"{r} 일간 수익률")
+        ax2.set_ylabel(f"{s} 일간 수익률")
         ax2.axhline(0, color="gray", linewidth=0.5)
         ax2.axvline(0, color="gray", linewidth=0.5)
         ax2.set_title(f"{r} vs {s}")
