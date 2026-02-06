@@ -56,7 +56,7 @@ def inject_sidebar_metric_css():
 def render_korea_kpis(api_key: str):
     inject_sidebar_metric_css()
     st.markdown("---")
-    st.subheader("📌 한국 KPI")
+    st.subheader("◾국내 핵심 지표")
 
     kpis = _cached_all_kpis(api_key)
 
@@ -77,16 +77,16 @@ def render_sidebar():
             menu_title="menu",
             menu_icon="back",
             options=[
-                "거시경제 주요 지표 현황",
-                "자산별 상관관계 분석",
-                "시장 심리 및 뉴스 분석",
-                "주식 환산 계산기",
+                "시장 현황",
+                "자산 상관 분석",
+                "뉴스·심리 분석",
+                "현실 손익 환산기",
             ],
             icons=["1-square", "2-square", "3-square", "4-square"],
             default_index=0,
             styles={
                 "container": {"padding": "0!important", "background-color": "#fafafa"},
-                "icon": {"color": "orange", "font-size": "18px"},
+                "icon": {"color": "#77002E", "font-size": "18px"},
                 "nav-link": {
                     "font-size": "16px",
                     "text-align": "left",
