@@ -3,9 +3,11 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 import numpy as np
-import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import yfinance as yf
+import plotly.graph_objects as go
+
 
 plt.rcParams["font.family"] = "Malgun Gothic"   # Windows
 plt.rcParams["axes.unicode_minus"] = False
@@ -24,12 +26,12 @@ ASSETS = {
 }
 
 ASSET_COLORS = {
-    "S&P 500": "#2F4F4F",
-    "QQQ": "#492176",
-    "Gold": "#6E2800",
-    "Gold ETF": "#C44E52",
-    "US Bond": "#23562F",
-    "Bitcoin": "#2E205C",
+    "S&P 500": "#243A5E",
+    "QQQ": "#2F7F7F",
+    "Gold": "#7A8F3B",
+    "Gold ETF": "#8B3A3A",
+    "US Bond": "#6B5B95",
+    "Bitcoin": "#B07A3B",
 }
 
 TICKER_TO_NAME = {v: k for k, v in ASSETS.items()}
@@ -102,11 +104,9 @@ def calc_period_returns(prices: pd.DataFrame) -> pd.Series:
 # 차트
 # =============================================================================
 
-def plot_price_line(
-    prices: pd.DataFrame,
-    label_map: dict[str, str],
-    normalize: bool = True,
-) -> None:
+import plotly.graph_objects as go
+
+def plot_price_line_plotly(prices: pd.DataFrame, label_map: dict[str, str], normalize: bool=True):
     if prices is None or prices.empty:
         st.info("표시할 데이터가 없습니다.")
         return
@@ -114,94 +114,79 @@ def plot_price_line(
     df = prices.copy()
     if normalize:
         base = df.apply(lambda s: s.dropna().iloc[0] if s.dropna().size else np.nan)
-        df = df.divide(base, axis=1) * 100.0  # ✅ 컬럼별 기준
+        df = df.divide(base, axis=1) * 100.0
 
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig = go.Figure()
 
     for ticker in df.columns:
-        label = label_map.get(ticker, ticker)
-        color = ASSET_COLORS.get(label, "#4C72B0")
-        ax.plot(df.index, df[ticker], label=label, linewidth=1.8, color=color)
+        name = label_map.get(ticker, ticker)
+        color = ASSET_COLORS.get(name, None)
 
-    ax.set_title("자산별 일일 종가 추이")
-    ax.set_ylabel("Index (Start=100)" if normalize else "Price")
-    ax.grid(alpha=0.25)
-    
-    ax.legend(
-        loc="upper left",
-        ncols=3,
-        fontsize=9,
-        frameon=False,
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df[ticker],
+                mode="lines",
+                name=name,
+                line=dict(width=2, color=color),
+                hovertemplate="%{x|%Y-%m-%d}<br><b>%{y:.2f}</b><extra>"+name+"</extra>",
+            )
+        )
+
+    fig.update_layout(
+        title="자산별 종가 추이",
+        xaxis_title="Date",
+        yaxis_title="Index (Start=100)" if normalize else "Price",
+        hovermode="x unified",   # 한 날짜 기준으로 툴팁 묶어서 보여줌
+        legend_title_text="자산",
+        margin=dict(l=10, r=10, t=50, b=10),
+        height=420,
     )
 
-    ax.tick_params(axis="x", labelsize=8)
-    ax.tick_params(axis="y", labelsize=9)
+    # range slider(하단 미니 타임라인) 원하면 True
+    fig.update_xaxes(rangeslider_visible=True)
 
-    locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    st.plotly_chart(fig, use_container_width=True)
 
-    fig.tight_layout()
-    st.pyplot(fig, clear_figure=True)
+import plotly.express as px
 
-
-def plot_period_return_bar(
-    period_returns: pd.Series,
-    label_map: dict[str, str],
-    color_mode: str = "기본",
-) -> None:
+def plot_period_return_bar_plotly(period_returns: pd.Series, label_map: dict[str,str], color_mode: str="기본"):
     if period_returns is None or period_returns.empty:
         st.info("표시할 수익률 데이터가 없습니다.")
         return
 
-    s = period_returns.rename(index=label_map)
+    s = period_returns.rename(index=label_map).sort_values(ascending=False)
+    df = s.reset_index()
+    df.columns = ["Asset", "ReturnPct"]
 
-    # ---- 색상 결정 ----
+    # 색상 컬럼 만들기
     if color_mode == "수익률 +/-":
-        colors = [
-            "#405fa9" if v >= 0 else "#ad3d3de2"
-            for v in s.values
-        ]
-
+        df["Color"] = np.where(df["ReturnPct"] >= 0, "Up", "Down")
+        fig = px.bar(df, x="Asset", y="ReturnPct", color="Color", text="ReturnPct")
     elif color_mode == "자산별":
-        colors = [
-            ASSET_COLORS.get(name, "#4C72B0") for name in s.index]
+        df["Color"] = df["Asset"].map(lambda a: ASSET_COLORS.get(a, "#4C72B0"))
+        fig = px.bar(df, x="Asset", y="ReturnPct", text="ReturnPct")
+        # 자산별 고정 색 적용 (plotly는 discrete 색을 강제하려면 트릭이 필요해서 간단 버전은 아래처럼)
+        fig.update_traces(marker_color=df["Color"])
+    else:
+        fig = px.bar(df, x="Asset", y="ReturnPct", text="ReturnPct")
 
-    else:  # 기본
-        colors = "#253F96"
+    fig.update_traces(
+        texttemplate="%{text:.1f}%",
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>%{y:.2f}%<extra></extra>",
+    )
 
-    # ---- 차트 ----
-    labels = s.index.tolist()
-    values = s.values.astype(float)
-    pos = np.arange(len(labels))
+    fig.update_layout(
+        title="자산별 기간 수익률",
+        yaxis_title="%",
+        xaxis_title="",
+        margin=dict(l=10, r=10, t=50, b=10),
+        height=420,
+    )
+    fig.add_hline(y=0)
 
-    fig, ax = plt.subplots(figsize=(5, 3))
-    bars = ax.bar(pos, values, color=colors, width=0.4)  # width 고정
-
-    ax.set_title("기간 수익률 (%)")
-    ax.set_ylabel("%")
-    ax.axhline(0, color="black", linewidth=0.8)
-    ax.grid(axis="y", alpha=0.3)
- 
-    # ✅ 숫자 라벨 직접 제어 (가장 안정적)
-    for bar, v in zip(bars, values):
-        height = bar.get_height()
-
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            height + (1.5 if height >= 0 else -2.5),  # 👈 간격 핵심
-            f"{v:.1f}%",
-            ha="center",
-            va="bottom" if height >= 0 else "top",
-            fontsize=9,
-            color="#121212"
-        )
-
-    ax.set_xticks(pos)
-    ax.set_xticklabels(labels, fontsize=9)  # 자산명 표시
-
-    fig.tight_layout()
-    st.pyplot(fig, clear_figure=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 # =============================================================================
 # 페이지 렌더링
@@ -271,30 +256,41 @@ def render_asset_dashboard():
     )
 
     # ---------------- KPI ----------------
-    st.subheader("※ 요약 지표")
+    st.subheader("☞ 현재가")
 
-    # 최소 계산
-    pr = period_returns
+    last_close = prices.iloc[-1]
+    prev_close = prices.shift(1).iloc[-1]          # 전일(전 거래일) 종가
+    day_change_pct = (last_close / prev_close - 1) * 100
+
+    # 변동성은 그대로 쓰고 싶으면 유지
     vol = daily_returns.std() * 100 if not daily_returns.empty else pd.Series(dtype="float64")
 
     # 공통 인덱스 정합
     idx = prices.columns
-    pr = pr.reindex(idx)
+    last_close = last_close.reindex(idx)
+    day_change_pct = day_change_pct.reindex(idx)
     vol = vol.reindex(idx)
 
-    # 정렬
-    pr = pr.sort_values(ascending=False)
+    # ✅ 보기 좋게: 전일대비 내림차순 정렬 (원하면 last_close 기준으로 바꿔도 됨)
+    order = day_change_pct.sort_values(ascending=False).index
 
-    cols = st.columns(len(pr))
-    for col, ticker in zip(cols, pr.index):
+    cols = st.columns(len(order))
+    for col, ticker in zip(cols, order):
         name = label_map.get(ticker, ticker)
-        value = pr[ticker]
+
+        lc = last_close.get(ticker)
+        dc = day_change_pct.get(ticker)
         v = vol.get(ticker)
+
+        # 숫자 포맷(자산별로 다르게 하고 싶으면 여기서 분기 가능)
+        value_str = f"{lc:,.2f}" if pd.notna(lc) else "N/A"
+        delta_str = f"{dc:+.2f}%" if pd.notna(dc) else None
 
         col.metric(
             label=name,
-            value=f"{value:.2f}%" if pd.notna(value) else "N/A",
-            delta=f"{v:.1f}% vol" if pd.notna(v) else None,
+            value=value_str,
+            delta=delta_str,
+            help=f"변동성(일간 표준편차): {v:.2f}%" if pd.notna(v) else None
         )
 
     # ---------------- 차트 ----------------
@@ -302,35 +298,28 @@ def render_asset_dashboard():
 
     with tabs[0]:
         st.markdown("자산 가격이 시간에 따라 어떻게 변해왔는지(흐름)를 보여줍니다. "
-            "지수화(시작=100)를 켜면 자산 간 **상대 성과**를 더 쉽게 비교할 수 있어요."
+            "☑️지수화(시작=100)를 켜면 자산 간 **상대 성과**를 더 쉽게 비교할 수 있어요."
         )
-        st.info(
-            "💡 해석 팁\n"
-            "- **기울기**: 성과(상대적으로 더 빠르게 오르거나 내림)\n"
-            "- **흔들림(진폭)**: 변동성(체감 위험)\n"
-            "- 선이 **같이 움직이면** 동조, **갈라지면** 시장의 선택(리스크 온/오프) 신호일 수 있어요."
-        )
-        plot_price_line(
-            prices,
-            label_map=label_map,
-            normalize=normalize,
-        )
-
+        
+        plot_price_line_plotly(prices, label_map=label_map, normalize=normalize)
+        with st.expander("💡 해석 팁\n"):
+            st.info(
+                "- **기울기**: 성과(상대적으로 더 빠르게 오르거나 내림)\n"
+                "- **흔들림(진폭)**: 변동성(체감 위험)\n"
+                "- 선이 **같이 움직이면** 동조, **갈라지면** 시장의 선택(리스크 온/오프) 신호일 수 있어요."
+            )
     with tabs[1]:
         st.markdown("선택한 기간의 **시작 대비 현재**가 몇 % 변했는지 요약한 결과입니다. "
             "자산별 성과를 한 번에 비교할 때 유용해요."
         )
-        st.info(
-            "💡 해석 팁\n"
-            "- 기간 수익률은 **결과 요약**이에요. (과정은 ‘가격 추이’에서 확인)\n"
-            "- **수익률 +/-** 모드: 상승/하락 방향을 빠르게 파악\n"
-            "- **자산별** 모드: 자산 정체성(색상)을 유지해 비교가 쉬워요."
-        )
-        plot_period_return_bar(
-            period_returns.rename(index=label_map),
-            label_map=label_map,
-            color_mode=bar_color_mode,
-        )
+        
+        plot_period_return_bar_plotly(period_returns, label_map=label_map, color_mode=bar_color_mode)
+        with st.expander("💡 해석 팁\n"):
+            st.info(
+                "- 기간 수익률은 **결과 요약**이에요. (과정은 ‘가격 추이’에서 확인)\n"
+                "- **수익률 +/-** 모드: 상승/하락 방향을 빠르게 파악\n"
+                "- **자산별** 모드: 자산 정체성(색상)을 유지해 비교가 쉬워요."
+            )
     # ---------------- 데이터 확인 ----------------
     with st.expander("데이터 미리보기"):
         st.caption("Prices (Close)")
