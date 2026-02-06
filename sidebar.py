@@ -22,6 +22,7 @@ def _format_delta(latest: float | None, prev: float | None) -> str | None:
         return None
     return f"{latest - prev:+.2f}"
 
+
 def inject_sidebar_metric_css():
     st.markdown(
         """
@@ -51,6 +52,7 @@ def inject_sidebar_metric_css():
         unsafe_allow_html=True,
     )
 
+
 def render_korea_kpis(api_key: str):
     inject_sidebar_metric_css()
     st.markdown("---")
@@ -78,8 +80,9 @@ def render_sidebar():
                 "거시경제 주요 지표 현황",
                 "자산별 상관관계 분석",
                 "시장 심리 및 뉴스 분석",
+                "주식 환산 계산기",
             ],
-            icons=["1-square", "2-square", "3-square"],
+            icons=["1-square", "2-square", "3-square", "4-square"],
             default_index=0,
             styles={
                 "container": {"padding": "0!important", "background-color": "#fafafa"},
