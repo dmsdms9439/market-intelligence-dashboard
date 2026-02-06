@@ -80,16 +80,15 @@ def calc_daily_returns(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def calc_period_returns(prices: pd.DataFrame) -> pd.Series:
-    if prices is None or prices.empty or len(prices) < 2:
+    if prices is None or prices.empty:
         return pd.Series(dtype="float64")
 
-    first = prices.iloc[0]
-    last = prices.iloc[-1]
+    first = prices.apply(lambda s: s.dropna().iloc[0] if s.dropna().size else np.nan)
+    last  = prices.apply(lambda s: s.dropna().iloc[-1] if s.dropna().size else np.nan)
+
     out = (last / first - 1.0) * 100.0
     out.name = "period_return_pct"
     return out
-
-
 # =============================================================================
 # 차트
 # =============================================================================
@@ -105,7 +104,8 @@ def plot_price_line(
 
     df = prices.copy()
     if normalize:
-        df = df / df.iloc[0] * 100.0
+        base = df.apply(lambda s: s.dropna().iloc[0] if s.dropna().size else np.nan)
+        df = df.divide(base, axis=1) * 100.0  # ✅ 컬럼별 기준
 
     fig, ax = plt.subplots(figsize=(10, 4))
 
@@ -113,7 +113,7 @@ def plot_price_line(
         label = label_map.get(ticker, ticker)
         ax.plot(df.index, df[ticker], label=label, linewidth=1.8)
 
-    ax.set_title("자산별 종가 추이")
+    ax.set_title("자산별 일일 종가 추이")
     ax.set_ylabel("Index (Start=100)" if normalize else "Price")
     ax.grid(alpha=0.25)
 
