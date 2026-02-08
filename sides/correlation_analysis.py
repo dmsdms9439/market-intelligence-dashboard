@@ -7,29 +7,31 @@ from datetime import date, timedelta
 # -----------------------------
 # 자산 분류
 # -----------------------------
+ASSETS = ["Bitcoin", "S&P 500", "QQQ", "Gold", "US Bond", "USD Index"]
+TICK = ["BTC-USD", "^GSPC", "QQQ", "GC=F", "TLT", "DX-Y.NYB"]
 
 ASSETS_TO_TICK = {
+    "Bitcoin": "BTC-USD",
     "S&P 500": "^GSPC",
+    "QQQ": "QQQ",
     "Gold": "GC=F",
     "US Bond": "TLT",
-    "Bitcoin": "BTC-USD",
-    "QQQ": "QQQ",
     "USD Index": "DX-Y.NYB",
 }
 
 TICK_TO_ASSETS = {
+    "BTC-USD": "Bitcoin",
     "^GSPC": "S&P 500",
+    "QQQ": "QQQ",
     "GC=F": "Gold",
     "TLT": "US Bond",
-    "BTC-USD": "Bitcoin",
-    "QQQ": "QQQ",
     "DX-Y.NYB": "USD Index",
 }
 
 
 @st.cache_data(ttl=3600)
 def load_price_data(tickers, start, end):
-    df = yf.download(tickers, start=start, end=end)
+    df = yf.download(tickers, start=start, end=end, interval="1wk")
 
     # 1️⃣ Adj Close가 있으면 사용
     if "Adj Close" in df.columns.get_level_values(0):
@@ -43,7 +45,7 @@ def load_price_data(tickers, start, end):
 
 
 def calculate_daily_returns(price_df):
-    """일간 수익률 계산"""
+    """주간 수익률 계산"""
     return price_df.pct_change().dropna()
 
 
@@ -63,9 +65,9 @@ def interpret_corr(v):
 def render_correlation_analysis():
     st.title("🔗 위험자산–안전자산 상관관계 분석")
 
-    st.markdown(
+    st.info(
         """
-        **일간 수익률 기반 상관관계 분석**
+        **주간 수익률 기반 상관관계 분석**
         - 위험자산과 안전자산 간의 분산 효과 확인
         - 시장 스트레스 국면에서의 관계 파악
         """
@@ -77,7 +79,7 @@ def render_correlation_analysis():
     col1, col2 = st.columns(2)
 
     with col1:
-        start_date = st.date_input("시작일", value=date.today() - timedelta(days=365))
+        start_date = st.date_input("시작일", value=date.today() - timedelta(days=180))
 
     with col2:
         end_date = st.date_input("종료일", value=date.today())
@@ -87,28 +89,66 @@ def render_correlation_analysis():
     # -----------------------------
     st.subheader("📌 자산 선택")
 
-    risk_assets = st.multiselect(
-        "위험자산",
+    st.markdown(
+        """
+            <style>
+            .asset-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 16px;
+            }
+            .asset-table th {
+                text-align: left;
+                padding: 10px;
+                border-bottom: 2px solid #333;
+            }
+            .asset-table td {
+                padding: 12px 10px;
+                border-bottom: 1px solid #ddd;
+            }
+            .risk {
+                color: #d62728;
+                font-weight: bold;
+            }
+            .safe {
+                color: #1f77b4;
+                font-weight: bold;
+            }
+            </style>
+
+            <table class="asset-table">
+                <tr>
+                    <th>자산 분류</th>
+                    <th>해당 자산</th>
+                    <th>특징</th>
+                </tr>
+                <tr>
+                    <td class="risk">위험자산 (Risk-On)</td>
+                    <td>Bitcoin, S&P 500, QQQ</td>
+                    <td>시장 유동성 및 성장 기대감에 민감하게 반응, 높은 변동성 수반</td>
+                </tr>
+                <tr>
+                    <td class="safe">안전자산 (Risk-Off)</td>
+                    <td>Gold, US Bond, USD Index</td>
+                    <td>경제 불확실성 확대 시 가치 보존 수단, 위험자산과 반대 경향</td>
+                </tr>
+            </table>
+        """,
+        unsafe_allow_html=True,
+    )
+    assets = st.multiselect(
+        "ASSETS",
         options=list(ASSETS_TO_TICK.keys()),
         default=list(ASSETS_TO_TICK.keys()),
     )
 
-    safe_assets = st.multiselect(
-        "안전자산",
-        options=list(ASSETS_TO_TICK.keys()),
-        default=list(ASSETS_TO_TICK.keys()),
-    )
-
-    tickers = risk_assets + safe_assets
-    selected_tickers = [ASSETS_TO_TICK[a] for a in tickers] if tickers else []
-
-    if len(tickers) < 2:
+    if len(assets) < 2:
         st.warning("자산을 2개 이상 선택하세요.")
         return
     # -----------------------------
     # 데이터 로드 & 수익률 계산
     # -----------------------------
-    price_df = load_price_data(selected_tickers, start_date, end_date)
+    price_df = load_price_data(TICK, start_date, end_date)
 
     if price_df.empty:
         st.error("데이터를 불러오지 못했습니다.")
@@ -116,18 +156,15 @@ def render_correlation_analysis():
 
     returns = calculate_daily_returns(price_df).rename(columns=TICK_TO_ASSETS)
 
-    st.subheader("📈 선택 자산 일간 수익률")
-    False
+    st.subheader("📈 선택 자산 주간 수익률")
+    st.dataframe(returns[assets].tail(100).style.format("{:.4%}"))
 
     # -----------------------------
     # 상관관계 계산
     # -----------------------------
     corr = returns.corr()
 
-    # 위험자산 vs 안전자산만 추출
-    corr_rs = corr.loc[risk_assets, safe_assets]
-    # corr_rs.index = risk_assets
-    # corr_rs.columns = safe_assets
+    corr_rs = corr.loc[assets, assets]
 
     # -----------------------------
     # 히트맵 시각화
@@ -149,87 +186,85 @@ def render_correlation_analysis():
     # 히트맵 해석 요약
     # -----------------------------
     with st.expander("🧠 해석 가이드"):
-        st.caption("※ 상관계수는 최근 일간 수익률 기준으로 계산됨")
 
-        st.markdown(
-            """
-            - **상관계수 < 0** : 분산 효과 (헤지 가능)
-            - **상관계수 ≈ 0** : 독립적 움직임
-            - **상관계수 > 0** : 동조화 (리스크 증가)
-            - 위기 국면에서는 상관관계가 급변할 수 있음
-            """
-        )
-
-        "---"
-
-        st.subheader("📌 시장 국면 핵심 상관관계")
+        st.subheader("📌 시장 요약")
 
         btc_gold = corr.loc["Bitcoin", "Gold"]
         eq_bond = corr.loc["S&P 500", "US Bond"]
         usd_eq = corr.loc["USD Index", "S&P 500"]
+        summary = []
+
+        if eq_bond > 0:
+            summary.append("• 주식–채권 동조화로 **분산 효과가 약화**되고 있음")
+        if usd_eq < -0.3:
+            summary.append(
+                "• **달러와 주식간의 자금 이동이 뚜렷**하게 나타나며 **주식 상승 · 달러 약세** 에는 **위험 선호(Risk-on)**, **주식 하락 · 달러 강세** 때는 **위험 회피(Risk-off)**가 예측됨"
+            )
+        if btc_gold < 0.1:
+            summary.append(
+                "• **비트코인은 금과 독립적**으로 움직이며 디지털 금 성격은 제한적"
+            )
+        if not summary:
+            summary.append(
+                """
+                분석 결과 자산 간 관계가 강하게 나타나지 않았습니다. 
+                대부분의 자산 쌍은 완전히 같은 방향이나 반대 방향으로 움직이기보다는, 약하거나 독립적인 관계를 보였습니다. 
+                """
+            )
+        st.markdown("\n\n".join(summary))
+
+        st.divider()
+
+        st.subheader("📌 시장 국면 핵심 상관관계")
         col1, col2, col3 = st.columns(3)
 
         # BTC vs 금 → 디지털 금 논쟁
         with col1:
             st.metric(
-                label="비트코인 ↔ 금 상관계수",
+                label="1. Bitcoin ↔ Gold 상관계수",
                 value=f"{btc_gold:.2f}",
-                help="비트코인이 금과 유사한 헤지 자산(디지털 금)으로 작동하는지 판단하는 지표",
+                help="Bitcoin이 Gold과 유사한 디지털 금으로 작동하는지 판단하는 지표",
             )
 
         # 주식 vs 채권 → 전통적 분산 구조 붕괴 여부
         with col2:
             st.metric(
-                label="주식 ↔ 채권 상관계수",
+                label="2. 주식 ↔ 채권 상관계수",
                 value=f"{eq_bond:.2f}",
                 delta=(
                     "주식·채권 동반 하락 가능성"
                     if eq_bond > 0
                     else "상호 보완적 움직임"
                 ),
-                help="주식–채권 간 분산 투자 구조(60/40)가 정상적으로 작동하는지 판단",
+                help="주식–채권 간 분산 투자 구조가 정상적으로 작동하는지 판단",
             )
 
         # 달러 인덱스 vs 위험자산 → 리스크 오프 신호
         with col3:
             st.metric(
-                label="달러 지수 ↔ 주식 상관계수",
+                label="3. 달러 ↔ 주식 상관계수",
                 value=f"{usd_eq:.2f}",
                 help="달러 강세 시 위험자산 회피(Risk-Off) 여부를 판단하는 지표",
             )
-
-        st.caption(
-            """
-            **헤지 자산(Hedge Asset)**이란  
-            보유 자산의 손실을 줄이거나 상쇄하는 역할을 하는 자산
-
-            **일반적인 특징**
-            - 위험자산과 상관관계가 낮거나 음(-)
-            - 시장 위기 시 가치 유지 또는 상승
-            - 충분한 유동성 보유
-            """
-        )
+        ""
+        st.caption("※ 상관계수는 최근 주간 수익률 기준으로 계산됨")
 
         interpretations = {
-            "BTC vs Gold": {
+            "Bitcoin vs Gold": {
                 "value": btc_gold,
                 "meaning": interpret_corr(btc_gold),
                 "macro": (
-                    "비트코인이 금과 동조 → 위험자산 성격 강화"
+                    "비트코인이 금과 동조 → ‘디지털 금’으로서의 대체 가능성은 적으며 위험자산 성격 강화"
                     if btc_gold > 0.3
-                    else "비트코인은 금과 독립적 → 디지털 금 논쟁 지속"
+                    else "비트코인은 전통적 안전자산인 금과 뚜렷한 동조 관계를 보이지 않음"
                 ),
                 "caption": """
-                    1. 일반적인 상황
-                    주식 ↓ → 채권 ↑
-                    👉 분산 효과 (Diversification)
-
-                    2. 문제 되는 상황
-                    주식 ↑, 채권 ↑ (또는 둘 다 ↓)
-                    👉 분산 구조 붕괴
+                    추가 설명:
+                    - 비트코인은 상황에 따라 변동 → 안전자산 대체 기능은 불확실
+                    👉 비트코인은 금의 대체재라기보다는 독립적인 위험 자산
                 """,
             },
-            "주식 vs 채권": {
+            "주식(S&P 500) vs 채권(US Bond)": {
                 "value": eq_bond,
                 "meaning": interpret_corr(eq_bond),
                 "macro": (
@@ -238,27 +273,32 @@ def render_correlation_analysis():
                     else "전통적 주식–채권 분산 구조 유지"
                 ),
                 "caption": """
-                    1. 일반적인 상황
-                    주식 ↓ → 채권 ↑
-                    👉 분산 효과 (Diversification)
-
-                    2. 문제 되는 상황
-                    주식 ↑, 채권 ↑ (또는 둘 다 ↓)
+                    일반적인 상황:
+                    - 주식 ↓ → 채권 ↑
+                    👉 자산 분산 효과 (Diversification)
+                    \n
+                    문제가 되는 상황:
+                    - 주식 ↑, 채권 ↑ (또는 둘 다 ↓)
                     👉 분산 구조 붕괴
                 """,
             },
-            "USD Index vs Equity": {
+            "달러(USD Index) vs 주식(S&P 500)": {
                 "value": usd_eq,
                 "meaning": interpret_corr(usd_eq),
                 "macro": (
-                    "달러 강세 = Risk-Off 국면"
+                    "달러와 주식 자금 이동이 강화"
                     if usd_eq < -0.3
                     else "달러–주식 관계 중립"
                 ),
                 "caption": """
-""",
+                    일반적인 상황:
+                    - 시장 불안 → 달러 ↑ / 주식 ↓
+                    - 시장 안정 → 달러 ↓ / 주식 ↑
+                """,
             },
         }
+
+        st.divider()
 
         st.subheader("📌 상관관계 기반 해석")
 
@@ -267,46 +307,63 @@ def render_correlation_analysis():
                 f"""
                 **{k}**  
                 - 상관계수: `{v['value']:.2f}`  
-                - 해석: {v['meaning']}  
-                - 시사점: **{v['macro']}**
+                - 의미: {v['meaning']}  
+                - 해석: **{v['macro']}**
                 """
             )
 
             st.caption(f"{v['caption']}")
-            "---"
 
-        ""
-        "---"
-        ""
+            st.divider()
 
-        st.subheader("📌 시장 요약")
+        st.markdown(
+            """
+            - |상관계수| < 0.1 : 독립적 움직임
+            - 0.1 ≤ |상관계수| < 0.3 : 약한 의미 관계
+            - **상관계수 <= -0.3** : 분산 효과 (hedge, Risk-Off)
+            - **상관계수 >= 0.3** : 자산의 동조화 (Risk-On)
 
-        summary = []
+            \n\n
+            관계위기 국면에서는 상관관계가 급변할 수 있음
+            """
+        )
 
-        if eq_bond > 0:
-            summary.append("• 주식–채권 동조화로 전통적 분산 효과가 약화되고 있음")
-        if usd_eq < -0.3:
-            summary.append("• 달러 강세가 나타나며 위험회피 심리가 우세")
-        if btc_gold < 0.1:
-            summary.append(
-                "• 비트코인은 금과 독립적으로 움직이며 디지털 금 성격은 제한적"
-            )
+        st.divider()
 
-        st.markdown("\n".join(summary))
+        st.caption(
+            """
+            헤지(Hedge)는 금융 시장에서 환율, 금리, 주가 등 자산 가격 변동에 따른 위험을 줄이기 위해 반대 방향의 포지션을 취하여 손실을 최소화하는 위험 회피 전략
+            """
+        )
 
     # -----------------------------
     # 산점도
     # -----------------------------
     with st.expander("📌 위험자산 vs 안전자산 산점도"):
-        r = st.selectbox("위험자산 선택", risk_assets)
-        s = st.selectbox("안전자산 선택", safe_assets)
+        r = st.selectbox("첫번째 자산 선택", ASSETS)
+        s = st.selectbox("두번째 자산 선택", ASSETS)
 
         fig2, ax2 = plt.subplots(figsize=(6, 4))
-        ax2.scatter(returns[r], returns[s], alpha=0.5)
-        ax2.set_xlabel(f"{r} 일간 수익률")
-        ax2.set_ylabel(f"{s} 일간 수익률")
+        sns.regplot(
+            x=returns[r],
+            y=returns[s],
+            ci=95,
+            scatter_kws={"alpha": 0.6},
+            line_kws={"linewidth": 2},
+            ax=ax2,
+        )
+        ax2.set_xlabel(f"{r} 주간 수익률")
+        ax2.set_ylabel(f"{s} 주간 수익률")
         ax2.axhline(0, color="gray", linewidth=0.5)
         ax2.axvline(0, color="gray", linewidth=0.5)
         ax2.set_title(f"{r} vs {s}")
 
         st.pyplot(fig2)
+
+        st.caption(
+            """
+            **점**은 실제 관측값, **선**은 평균적인 선형 관계,
+            **음영 영역*는 해당 관계의 불확실성을 나타냅니다.
+            범위가 넓을수록 관계는 예측하기 어렵습니다.
+        """
+        )
