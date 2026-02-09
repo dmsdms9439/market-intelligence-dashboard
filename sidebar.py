@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-
+from datetime import date
 from data.ecos import fetch_all_kpis, KpiValue
 
 
@@ -57,6 +57,9 @@ def render_korea_kpis(api_key: str):
     inject_sidebar_metric_css()
     st.markdown("---")
     st.subheader("◾국내 핵심 지표")
+
+    today = date.today()
+    st.write(f"📅 {today}")
 
     kpis = _cached_all_kpis(api_key)
 
