@@ -160,9 +160,16 @@ def plot_period_return_bar_plotly(period_returns: pd.Series, label_map: dict[str
     df.columns = ["Asset", "ReturnPct"]
 
     # 색상 컬럼 만들기
-    if color_mode == "수익률 +/-":
+    if color_mode == "수익률 +/-" :
         df["Color"] = np.where(df["ReturnPct"] >= 0, "Up", "Down")
-        fig = px.bar(df, x="Asset", y="ReturnPct", color="Color", text="ReturnPct")
+        fig = px.bar(
+            df, x="Asset", y="ReturnPct",
+            color="Color", text="ReturnPct",
+            color_discrete_map={"Up": "#c75656", "Down": "#448bd1"}  # +빨강, -파랑
+            )
+    # if color_mode == "수익률 +/-":
+    #     df["Color"] = np.where(df["ReturnPct"] >= 0, "Up", "Down")
+    #     fig = px.bar(df, x="Asset", y="ReturnPct", color="Color", text="ReturnPct")
     elif color_mode == "자산별":
         df["Color"] = df["Asset"].map(lambda a: ASSET_COLORS.get(a, "#4C72B0"))
         fig = px.bar(df, x="Asset", y="ReturnPct", text="ReturnPct")
